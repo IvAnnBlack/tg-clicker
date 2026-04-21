@@ -1,0 +1,480 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Кликер Монет</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--tg-theme-bg-color, #ffffff);
+            color: var(--tg-theme-text-color, #000000);
+            overflow: hidden;
+            touch-action: manipulation;
+        }
+
+        #app {
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            padding: 20px;
+        }
+
+        #header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        #score {
+            font-size: 48px;
+            font-weight: bold;
+            color: var(--tg-theme-button-color, #3390ec);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.1);
+        }
+
+        #per-second {
+            font-size: 16px;
+            color: var(--tg-theme-hint-color, #999);
+            margin-top: 5px;
+        }
+
+        #game-area {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        #coin {
+            width: 200px;
+            height: 200px;
+            background: linear-gradient(135deg, #ffd700 0%, #ffed4e 50%, #ffd700 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 80px;
+            cursor: pointer;
+            user-select: none;
+            box-shadow: 0 10px 30px rgba(255, 215, 0, 0.4);
+            transition: transform 0.1s;
+            border: 5px solid #ffed4e;
+        }
+
+        #coin:active {
+            transform: scale(0.95);
+        }
+
+        .click-effect {
+            position: absolute;
+            font-size: 32px;
+            font-weight: bold;
+            color: #ffd700;
+            pointer-events: none;
+            animation: floatUp 1s ease-out forwards;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        @keyframes floatUp {
+            0% {
+                opacity: 1;
+                transform: translateY(0);
+            }
+            100% {
+                opacity: 0;
+                transform: translateY(-100px);
+            }
+        }
+
+        #upgrades {
+            background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+            border-radius: 12px;
+            padding: 15px;
+            max-height: 200px;
+            overflow-y: auto;
+        }
+
+        .upgrade {
+            background: var(--tg-theme-bg-color, #ffffff);
+            border-radius: 8px;
+            padding: 12px;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .upgrade-info {
+            flex: 1;
+        }
+
+        .upgrade-name {
+            font-weight: bold;
+            font-size: 16px;
+            margin-bottom: 4px;
+        }
+
+        .upgrade-desc {
+            font-size: 12px;
+            color: var(--tg-theme-hint-color, #999);
+        }
+
+        .upgrade-btn {
+            background: var(--tg-theme-button-color, #3390ec);
+            color: var(--tg-theme-button-text-color, #ffffff);
+            border: none;
+            border-radius: 8px;
+            padding: 10px 20px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            white-space: nowrap;
+            margin-left: 10px;
+        }
+
+        .upgrade-btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .upgrade-btn:active:not(:disabled) {
+            transform: scale(0.95);
+        }
+
+        #stats {
+            display: flex;
+            justify-content: space-around;
+            margin: 15px 0;
+            padding: 10px;
+            background: var(--tg-theme-secondary-bg-color, #f0f0f0);
+            border-radius: 8px;
+        }
+
+        .stat {
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 20px;
+            font-weight: bold;
+            color: var(--tg-theme-button-color, #3390ec);
+        }
+
+        .stat-label {
+            font-size: 12px;
+            color: var(--tg-theme-hint-color, #999);
+            margin-top: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div id="app">
+        <div id="header">
+            <div id="score">0</div>
+            <div id="per-second">+0/сек</div>
+        </div>
+
+        <div id="stats">
+            <div class="stat">
+                <div class="stat-value" id="total-clicks">0</div>
+                <div class="stat-label">Кликов</div>
+            </div>
+            <div class="stat">
+                <div class="stat-value" id="click-power">1</div>
+                <div class="stat-label">За клик</div>
+            </div>
+        </div>
+
+        <div id="game-area">
+            <div id="coin">💰</div>
+        </div>
+
+        <div id="upgrades"></div>
+    </div>
+
+    <script>
+        // Инициализация Telegram Web App
+        const tg = window.Telegram?.WebApp || {
+            expand: () => console.log('Telegram WebApp not available'),
+            enableClosingConfirmation: () => {},
+            HapticFeedback: null,
+            sendData: (data) => console.log('SendData:', data),
+            initDataUnsafe: {}
+        };
+
+        try {
+            tg.expand();
+            tg.enableClosingConfirmation();
+        } catch (e) {
+            console.log('Running in test mode (not in Telegram)');
+        }
+
+        // Игровое состояние
+        let gameState = {
+            score: 0,
+            clickPower: 1,
+            perSecond: 0,
+            totalClicks: 0,
+            upgrades: [
+                {
+                    id: 'cursor',
+                    name: '🖱️ Курсор',
+                    desc: '+1 за клик',
+                    cost: 10,
+                    owned: 0,
+                    clickBonus: 1,
+                    autoBonus: 0
+                },
+                {
+                    id: 'grandma',
+                    name: '👵 Бабушка',
+                    desc: '+1/сек',
+                    cost: 50,
+                    owned: 0,
+                    clickBonus: 0,
+                    autoBonus: 1
+                },
+                {
+                    id: 'farm',
+                    name: '🌾 Ферма',
+                    desc: '+5/сек',
+                    cost: 200,
+                    owned: 0,
+                    clickBonus: 0,
+                    autoBonus: 5
+                },
+                {
+                    id: 'factory',
+                    name: '🏭 Фабрика',
+                    desc: '+20/сек',
+                    cost: 1000,
+                    owned: 0,
+                    clickBonus: 0,
+                    autoBonus: 20
+                },
+                {
+                    id: 'bank',
+                    name: '🏦 Банк',
+                    desc: '+100/сек',
+                    cost: 5000,
+                    owned: 0,
+                    clickBonus: 0,
+                    autoBonus: 100
+                },
+                {
+                    id: 'rocket',
+                    name: '🚀 Ракета',
+                    desc: '+500/сек',
+                    cost: 25000,
+                    owned: 0,
+                    clickBonus: 0,
+                    autoBonus: 500
+                }
+            ]
+        };
+
+        // Загрузка сохранения
+        function loadGame() {
+            const saved = localStorage.getItem('clickerGame');
+            if (saved) {
+                const data = JSON.parse(saved);
+                gameState.score = data.score || 0;
+                gameState.totalClicks = data.totalClicks || 0;
+
+                if (data.upgrades) {
+                    data.upgrades.forEach((savedUpgrade, index) => {
+                        if (gameState.upgrades[index]) {
+                            gameState.upgrades[index].owned = savedUpgrade.owned || 0;
+                            gameState.upgrades[index].cost = savedUpgrade.cost || gameState.upgrades[index].cost;
+                        }
+                    });
+                }
+
+                calculateStats();
+            }
+        }
+
+        // Сохранение игры
+        function saveGame() {
+            localStorage.setItem('clickerGame', JSON.stringify(gameState));
+        }
+
+        // Расчет статистики
+        function calculateStats() {
+            gameState.clickPower = 1;
+            gameState.perSecond = 0;
+
+            gameState.upgrades.forEach(upgrade => {
+                gameState.clickPower += upgrade.clickBonus * upgrade.owned;
+                gameState.perSecond += upgrade.autoBonus * upgrade.owned;
+            });
+        }
+
+        // Обновление UI
+        function updateUI() {
+            document.getElementById('score').textContent = Math.floor(gameState.score).toLocaleString();
+            document.getElementById('per-second').textContent = `+${gameState.perSecond}/сек`;
+            document.getElementById('total-clicks').textContent = gameState.totalClicks.toLocaleString();
+            document.getElementById('click-power').textContent = gameState.clickPower;
+
+            // Обновление кнопок улучшений
+            gameState.upgrades.forEach(upgrade => {
+                const btn = document.getElementById(`upgrade-${upgrade.id}`);
+                if (btn) {
+                    btn.disabled = gameState.score < upgrade.cost;
+                    btn.textContent = `${upgrade.cost.toLocaleString()} 💰`;
+                }
+
+                const count = document.getElementById(`count-${upgrade.id}`);
+                if (count && upgrade.owned > 0) {
+                    count.textContent = ` x${upgrade.owned}`;
+                }
+            });
+        }
+
+        // Клик по монете
+        function clickCoin(event) {
+            console.log('Клик по монете!', event);
+
+            gameState.score += gameState.clickPower;
+            gameState.totalClicks++;
+
+            // Эффект клика
+            const effect = document.createElement('div');
+            effect.className = 'click-effect';
+            effect.textContent = `+${gameState.clickPower}`;
+
+            const gameArea = document.getElementById('game-area');
+            const rect = event.target.getBoundingClientRect();
+            const areaRect = gameArea.getBoundingClientRect();
+
+            const x = (event.clientX || event.touches?.[0]?.clientX || rect.left + rect.width / 2) - areaRect.left;
+            const y = (event.clientY || event.touches?.[0]?.clientY || rect.top + rect.height / 2) - areaRect.top;
+
+            effect.style.left = x + 'px';
+            effect.style.top = y + 'px';
+
+            gameArea.appendChild(effect);
+
+            setTimeout(() => effect.remove(), 1000);
+
+            // Вибрация
+            if (tg.HapticFeedback) {
+                tg.HapticFeedback.impactOccurred('light');
+            }
+
+            updateUI();
+            saveGame();
+        }
+
+        // Покупка улучшения
+        function buyUpgrade(upgradeId) {
+            console.log('Попытка купить:', upgradeId);
+            const upgrade = gameState.upgrades.find(u => u.id === upgradeId);
+
+            if (!upgrade) {
+                console.error('Улучшение не найдено:', upgradeId);
+                return;
+            }
+
+            if (gameState.score < upgrade.cost) {
+                console.log('Недостаточно монет. Нужно:', upgrade.cost, 'Есть:', gameState.score);
+                return;
+            }
+
+            gameState.score -= upgrade.cost;
+            upgrade.owned++;
+            upgrade.cost = Math.floor(upgrade.cost * 1.15);
+
+            console.log('Куплено!', upgrade.name, 'Количество:', upgrade.owned);
+
+            calculateStats();
+            updateUI();
+            saveGame();
+
+            if (tg.HapticFeedback) {
+                tg.HapticFeedback.notificationOccurred('success');
+            }
+        }
+
+        // Рендер улучшений
+        function renderUpgrades() {
+            console.log('Рендер улучшений...');
+            const container = document.getElementById('upgrades');
+            container.innerHTML = '';
+
+            gameState.upgrades.forEach(upgrade => {
+                const div = document.createElement('div');
+                div.className = 'upgrade';
+                div.innerHTML = `
+                    <div class="upgrade-info">
+                        <div class="upgrade-name">
+                            ${upgrade.name}
+                            <span id="count-${upgrade.id}" style="color: var(--tg-theme-hint-color, #999);"></span>
+                        </div>
+                        <div class="upgrade-desc">${upgrade.desc}</div>
+                    </div>
+                    <button class="upgrade-btn" id="upgrade-${upgrade.id}">
+                        ${upgrade.cost.toLocaleString()} 💰
+                    </button>
+                `;
+                container.appendChild(div);
+
+                const btn = document.getElementById(`upgrade-${upgrade.id}`);
+                btn.onclick = () => buyUpgrade(upgrade.id);
+                console.log('Кнопка создана:', upgrade.name);
+            });
+
+            console.log('Улучшений отрендерено:', gameState.upgrades.length);
+        }
+
+        // Автоматический доход
+        function autoIncome() {
+            if (gameState.perSecond > 0) {
+                gameState.score += gameState.perSecond / 10;
+                updateUI();
+            }
+        }
+
+        // Автосохранение
+        setInterval(() => {
+            saveGame();
+        }, 5000);
+
+        // Автодоход каждые 100мс
+        setInterval(autoIncome, 100);
+
+        // Инициализация
+        console.log('Инициализация игры...');
+
+        const coinElement = document.getElementById('coin');
+        console.log('Элемент монеты:', coinElement);
+
+        coinElement.addEventListener('click', clickCoin);
+        coinElement.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            clickCoin(e.touches[0]);
+        });
+
+        console.log('Обработчики событий добавлены');
+
+        loadGame();
+        renderUpgrades();
+        updateUI();
+
+        console.log('Игра загружена!');
+        console.log('Состояние игры:', gameState);
+        console.log('Telegram User:', tg.initDataUnsafe?.user);
+    </script>
+</body>
+</html>
